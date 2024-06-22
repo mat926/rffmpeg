@@ -20,6 +20,7 @@
 #
 ###############################################################################
 
+import re
 import click
 import logging
 import os
@@ -401,6 +402,43 @@ def get_target_host(config):
     log.debug(f"Found optimal host ID {target_hid} '{target_hostname}' ({target_servername})")
     return target_hid, target_hostname, target_servername
 
+def transform_ffmpeg_filter_complex(filter_complex):
+    # Step 1: Split by semicolons to get each filter chain
+    filter_chains = filter_complex.split(';')
+    
+    transformed_chains = []
+    
+    for chain in filter_chains:
+        # Step 2: Split each chain by commas to get individual filters
+        filters = re.split(r'(?<!\\),', chain)
+        
+        transformed_filters = []
+        
+        for f in filters:
+            #exclusions
+            if f == 'hwmap=derive_device=qsv':
+                continue
+            if f == 'format=qsv[main]':
+                continue
+
+            # Step 3: Apply transformations
+            f = re.sub(r'format=bgra', 'format=yuva420p', f)
+            f = re.sub(r'scale_vaapi=format=nv12:extra_hw_frames=24', 'scale_cuda=format=yuv420p[main]', f)
+           # f = re.sub(r'', 'scale_cuda=format=yuv420p[main]', f)
+            f = re.sub(r'format=qsv\[main\]', 'format=yuv420p[main]', f)
+            f = re.sub(r'overlay_qsv=eof_action=pass:repeatlast=0:w=\d+:h=\d+', 'overlay_cuda=eof_action=pass:repeatlast=0', f)
+            f = re.sub(r'hwupload=derive_device=qsv:extra_hw_frames=64\[sub\]', 'hwupload=derive_device=cuda[sub]', f)
+            
+
+            
+            transformed_filters.append(f)
+        
+        transformed_chains.append(','.join(transformed_filters))
+    # expected 
+    #[0:4]scale=-1:2160:fast_bilinear,scale,crop,pad=max(3840\,iw):max(2160\,ih):(ow-iw)/2:(oh-ih)/2:black@0,crop=3840:2160,format=yuva420p,hwupload=derive_device=cuda[sub];
+    #[0:0]setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_cuda=format=yuv420p[main];
+    # [main][sub]overlay_cuda=eof_action=pass:repeatlast=0 "
+    return ';'.join(transformed_chains)
 
 def translate_harware_acceleration_args(rffmpeg_command):
     """
@@ -442,6 +480,11 @@ def translate_harware_acceleration_args(rffmpeg_command):
     #     else:
     #         new_args.append(arg)
     # Replacement dictionary
+
+    #test1 = "[0:4]scale=-1:1080:fast_bilinear,scale,crop,pad=max(1920\\,iw):max(1080\\,ih):(ow-iw)/2:(oh-ih)/2:black@0,crop=1920:1080,format=bgra,hwupload=derive_device=qsv:extra_hw_frames=64[sub];[0:0]setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=format=nv12:extra_hw_frames=24,hwmap=derive_device=qsv,format=qsv[main];[main][sub]overlay_qsv=eof_action=pass:repeatlast=0:w=3840:h=2160"
+    #test2 = "[0:4]scale=-1:1080:fast_bilinear,scale,crop,pad=max(1920\,iw):max(1080\,ih):(ow-iw)/2:(oh-ih)/2:black@0,crop=1920:1080,format=bgra,hwupload=derive_device=qsv:extra_hw_frames=64[sub];[0:0]setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=format=nv12:extra_hw_frames=24,hwmap=derive_device=qsv,format=qsv[main];[main][sub]overlay_qsv=eof_action=pass:repeatlast=0:w=3840:h=2160"
+    #new_filtergraph = transform_ffmpeg_filter_complex(test2)
+
     replacements = {
         '-init_hw_device': {
             'vaapi=va:,kernel_driver=i915,driver=iHD': 'cuda=cu:0',
@@ -468,7 +511,7 @@ def translate_harware_acceleration_args(rffmpeg_command):
     }
 
     remove_args = ['-init_hw_device', 'qsv=qs@va', '-level', '50']
-    add_args = ['-hwaccel_flags', '+unsafe_output']
+    add_args = ['-hwaccel_flags', '+unsafe_output', '-threads', "1"]
 
     new_args = []
     
@@ -476,7 +519,11 @@ def translate_harware_acceleration_args(rffmpeg_command):
     while i < len(rffmpeg_command):
         arg = rffmpeg_command[i]
         # Check if the current argument is in the replacements dictionary
-        if arg in replacements and i + 1 < len(rffmpeg_command) and rffmpeg_command[i + 1] in replacements[arg]:
+        if arg == "-filter_complex":
+            new_args.append(arg)
+            new_args.append(transform_ffmpeg_filter_complex(rffmpeg_command[i + 1]))
+            i += 1
+        elif arg in replacements and i + 1 < len(rffmpeg_command) and rffmpeg_command[i + 1] in replacements[arg]:
             replacement = replacements[arg][rffmpeg_command[i + 1]]
             if replacement:  # If there's a replacement, use it
                 new_args.append(arg)
@@ -491,9 +538,10 @@ def translate_harware_acceleration_args(rffmpeg_command):
             new_args.append(arg)
         i += 1
     
-    # Add any additional arguments
-    for arg in add_args:
-        new_args.append(arg)
+    # Insert additional arguments after -hwaccel_output_format
+    index = new_args.index('-hwaccel_output_format') + 2
+    for i, arg in enumerate(add_args):
+        new_args.insert(index + i, arg)
 
     return new_args
 
