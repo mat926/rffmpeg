@@ -700,7 +700,7 @@ def run_remote_command(
     #log.debug(f"Before translation: {rffmpeg_command}")
     # translated_command = translate_harware_acceleration_args(rffmpeg_command)
 
-    if rffmpeg_ssh_command[1] and rffmpeg_command[1] not in ['-version', '-hide_banner', '-encoders', '-filters', '-h', '-hwaccels']:
+    if rffmpeg_command[1] and rffmpeg_command[1] not in ['-version', '-hide_banner', '-encoders', '-filters', '-h', '-hwaccels']:
         update_hardware_acceleration('nvenc')
 
     log.info(f"Running command on host '{target_hostname}' ({target_servername})")
