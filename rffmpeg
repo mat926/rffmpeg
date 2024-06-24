@@ -55,6 +55,8 @@ POSTGRES_USER = os.environ.get("RFFMPEG_POSTGRES_USER")
 POSTGRES_PASS = os.environ.get("RFFMPEG_POSTGRES_PASS", "")
 POSTGRES_PORT = os.environ.get("RFFMPEG_POSTGRES_PORT", "5432")
 POSTGRES_HOST = os.environ.get("RFFMPEG_POSTGRES_HOST", "localhost")
+JELLYFIN_API_KEY = os.environ.get("JELLYFIN_API_KEY")
+JELLYFIN_SERVER_URL = os.environ.get("JELLYFIN_SERVER_URL")
 
 if POSTGRES_USER != None:
     DB_TYPE = "POSTGRES"
@@ -403,26 +405,25 @@ def get_target_host(config):
     log.debug(f"Found optimal host ID {target_hid} '{target_hostname}' ({target_servername})")
     return target_hid, target_hostname, target_servername
 
-def get_current_configuration(url, apikey):
-    result = requests.get(f'{url}/System/Configuration/encoding', params={'api_key': apikey})
+def get_current_configuration():
+    result = requests.get(f'{JELLYFIN_SERVER_URL}/System/Configuration/encoding', params={'api_key': JELLYFIN_API_KEY})
     log.debug(f"Current configuration: {result.json()}")
     return result.json()
 
-def save_configuration(configuration, url, apikey):
-    result = requests.post(f'{url}/System/Configuration/encoding', json=configuration,  params={'api_key': apikey})
+def save_configuration(configuration):
+    result = requests.post(f'{JELLYFIN_SERVER_URL}/System/Configuration/encoding', json=configuration,  params={'api_key': JELLYFIN_API_KEY})
     log.debug(f"Save configuration result status: {result.status_code}")
     result.raise_for_status()
 
 def update_hardware_acceleration(hardware_acceleration_type):
     log.debug(f"Changing hardware acceleration to {hardware_acceleration_type}")
     try:
-        jellyfin_api_key = os.environ.get("JELLYFIN_API_KEY")
-        server_url = os.environ.get("JELLYFIN_SERVER_URL")
-        log.debug(f"Jellyfin server URL: {server_url}")
-        current_configuration = get_current_configuration(server_url, jellyfin_api_key)
+
+        log.debug(f"Jellyfin server URL: {JELLYFIN_SERVER_URL}")
+        current_configuration = get_current_configuration()
         updated_configuration = current_configuration.copy()
         updated_configuration['HardwareAccelerationType'] = hardware_acceleration_type
-        save_configuration(updated_configuration, server_url, jellyfin_api_key)
+        save_configuration(updated_configuration)
     except Exception as e:
         fail(f"Failed to update hardware acceleration: {e}")
 
