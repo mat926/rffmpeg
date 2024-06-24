@@ -633,10 +633,11 @@ def run_local_command(config, command, command_args, stderr_as_stdout = False, m
     for arg in command_args:
         rffmpeg_command.append(f"{arg}")
 
-    # log.info("Running command on host 'localhost'")
-    # log.debug(f"Local command: {' '.join(rffmpeg_command)}")
     update_hardware_acceleration('qsv')
 
+    log.info("Running command on host 'localhost'")
+    log.debug(f"Local command: {' '.join(rffmpeg_command)}")
+    
     with dbconn(config) as cur:
         cur.execute(
             f"INSERT INTO processes (host_id, process_id, cmd) VALUES ({SQL_VAR_SIGN}, {SQL_VAR_SIGN}, {SQL_VAR_SIGN})",
