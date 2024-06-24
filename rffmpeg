@@ -635,7 +635,7 @@ def run_local_command(config, command, command_args, stderr_as_stdout = False, m
     for arg in command_args:
         rffmpeg_command.append(f"{arg}")
 
-    if rffmpeg_command[1] not in ['-version', '-hide_banner']:
+    if rffmpeg_command[1] not in ['-version', '-hide_banner', '-encoders']:
         update_hardware_acceleration('qsv')
 
     log.info("Running command on host 'localhost'")
@@ -697,7 +697,7 @@ def run_remote_command(
     # log.debug(f"Before translation: {rffmpeg_command}")
     # translated_command = translate_harware_acceleration_args(rffmpeg_command)
 
-    if rffmpeg_command[1] not in ['-version', '-hide_banner']:
+    if rffmpeg_command[1] not in ['-version', '-hide_banner', '-encoders']:
         update_hardware_acceleration('nvenc')
 
     log.info(f"Running command on host '{target_hostname}' ({target_servername})")
