@@ -421,6 +421,9 @@ def update_hardware_acceleration(hardware_acceleration_type):
 
         log.debug(f"Jellyfin server URL: {JELLYFIN_SERVER_URL}")
         current_configuration = get_current_configuration()
+        if current_configuration['HardwareAccelerationType'] == hardware_acceleration_type:
+            log.debug(f"Hardware acceleration is already set to {hardware_acceleration_type}")
+            return
         updated_configuration = current_configuration.copy()
         updated_configuration['HardwareAccelerationType'] = hardware_acceleration_type
         save_configuration(updated_configuration)
