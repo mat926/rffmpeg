@@ -414,12 +414,15 @@ def save_configuration(configuration, url, apikey):
     result.raise_for_status()
 
 def update_hardware_acceleration(hardware_acceleration_type):
-    jellyfin_api_key = os.environ.get('JELLYFIN_API_KEY')
-    server_url = os.environ.get('JELLYFIN_SERVER_URL')
-    current_configuration = get_current_configuration(server_url, jellyfin_api_key)
-    updated_configuration = current_configuration.copy()
-    updated_configuration['HardwareAccelerationType'] = hardware_acceleration_type
-    save_configuration(updated_configuration, server_url, jellyfin_api_key)
+    try:
+        jellyfin_api_key = os.environ.get('JELLYFIN_API_KEY')
+        server_url = os.environ.get('JELLYFIN_SERVER_URL')
+        current_configuration = get_current_configuration(server_url, jellyfin_api_key)
+        updated_configuration = current_configuration.copy()
+        updated_configuration['HardwareAccelerationType'] = hardware_acceleration_type
+        save_configuration(updated_configuration, server_url, jellyfin_api_key)
+    except Exception as e:
+        fail(f"Failed to update hardware acceleration: {e}")
 
 def transform_ffmpeg_filter_complex(filter_complex):
     # Step 1: Split by semicolons to get each filter chain
