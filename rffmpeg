@@ -696,7 +696,7 @@ def run_remote_command(
     update_hardware_acceleration('nvenc')
 
     log.info(f"Running command on host '{target_hostname}' ({target_servername})")
-    log.debug(f"Remote command: {' '.join(rffmpeg_ssh_command + translated_command)}")
+    log.debug(f"Remote command: {' '.join(rffmpeg_ssh_command + rffmpeg_command)}")
 
     with dbconn(config) as cur:
         cur.execute(
@@ -709,7 +709,7 @@ def run_remote_command(
         )
 
     return run_command(
-        rffmpeg_ssh_command + translated_command, stdin, stdout, stderr
+        rffmpeg_ssh_command + rffmpeg_command, stdin, stdout, stderr
     )
 
 
