@@ -28,6 +28,7 @@ import signal
 import sys
 import shlex
 import yaml
+import requests
 
 from contextlib import contextmanager
 from grp import getgrnam
@@ -402,6 +403,24 @@ def get_target_host(config):
     log.debug(f"Found optimal host ID {target_hid} '{target_hostname}' ({target_servername})")
     return target_hid, target_hostname, target_servername
 
+def get_current_configuration(url, apikey):
+    result = requests.get(f'{url}/System/Configuration/encoding', params={'api_key': apikey})
+    log.debug(f"Current configuration: {result.json()}")
+    return result.json()
+
+def save_configuration(configuration, url, apikey):
+    result = requests.post(f'{url}/System/Configuration/encoding', json=configuration,  params={'api_key': apikey})
+    log.debug(f"Save configuration result status: {result.status_code}")
+    result.raise_for_status()
+
+def update_hardware_acceleration(hardware_acceleration_type):
+    jellyfin_api_key = os.environ.get('JELLYFIN_API_KEY')
+    server_url = os.environ.get('JELLYFIN_SERVER_URL')
+    current_configuration = get_current_configuration(server_url, jellyfin_api_key)
+    updated_configuration = current_configuration.copy()
+    updated_configuration['HardwareAccelerationType'] = hardware_acceleration_type
+    save_configuration(updated_configuration, server_url, jellyfin_api_key)
+
 def transform_ffmpeg_filter_complex(filter_complex):
     # Step 1: Split by semicolons to get each filter chain
     filter_chains = filter_complex.split(';')
@@ -610,8 +629,9 @@ def run_local_command(config, command, command_args, stderr_as_stdout = False, m
     for arg in command_args:
         rffmpeg_command.append(f"{arg}")
 
-    log.info("Running command on host 'localhost'")
-    log.debug(f"Local command: {' '.join(rffmpeg_command)}")
+    # log.info("Running command on host 'localhost'")
+    # log.debug(f"Local command: {' '.join(rffmpeg_command)}")
+    update_hardware_acceleration('qsv')
 
     with dbconn(config) as cur:
         cur.execute(
@@ -666,8 +686,9 @@ def run_remote_command(
     
     rffmpeg_command.extend(map(shlex.quote, command_args))
 
-    log.debug(f"Before translation: {rffmpeg_command}")
-    translated_command = translate_harware_acceleration_args(rffmpeg_command)
+    # log.debug(f"Before translation: {rffmpeg_command}")
+    # translated_command = translate_harware_acceleration_args(rffmpeg_command)
+    update_hardware_acceleration('nvenc')
 
     log.info(f"Running command on host '{target_hostname}' ({target_servername})")
     log.debug(f"Remote command: {' '.join(rffmpeg_ssh_command + translated_command)}")
