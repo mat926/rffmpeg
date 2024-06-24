@@ -414,6 +414,7 @@ def save_configuration(configuration, url, apikey):
     result.raise_for_status()
 
 def update_hardware_acceleration(hardware_acceleration_type):
+    log.debug(f"Changing hardware acceleration to {hardware_acceleration_type}")
     try:
         jellyfin_api_key = os.environ.get('JELLYFIN_API_KEY')
         server_url = os.environ.get('JELLYFIN_SERVER_URL')
