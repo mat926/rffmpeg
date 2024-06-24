@@ -20,6 +20,7 @@
 #
 ###############################################################################
 
+import re
 import click
 import logging
 import os
@@ -27,6 +28,7 @@ import signal
 import sys
 import shlex
 import yaml
+import requests
 
 from contextlib import contextmanager
 from grp import getgrnam
@@ -53,6 +55,8 @@ POSTGRES_USER = os.environ.get("RFFMPEG_POSTGRES_USER")
 POSTGRES_PASS = os.environ.get("RFFMPEG_POSTGRES_PASS", "")
 POSTGRES_PORT = os.environ.get("RFFMPEG_POSTGRES_PORT", "5432")
 POSTGRES_HOST = os.environ.get("RFFMPEG_POSTGRES_HOST", "localhost")
+JELLYFIN_API_KEY = os.environ.get("RFFMPEG_JELLYFIN_API_KEY")
+JELLYFIN_SERVER_URL = os.environ.get("RFFMPEG_JELLYFIN_SERVER_URL")
 
 if POSTGRES_USER != None:
     DB_TYPE = "POSTGRES"
@@ -401,6 +405,218 @@ def get_target_host(config):
     log.debug(f"Found optimal host ID {target_hid} '{target_hostname}' ({target_servername})")
     return target_hid, target_hostname, target_servername
 
+def get_current_configuration():
+    result = requests.get(f'{JELLYFIN_SERVER_URL}/System/Configuration/encoding', params={'api_key': JELLYFIN_API_KEY})
+    log.debug(f"Current configuration: {result.json()}")
+    return result.json()
+
+def save_configuration(configuration):
+    result = requests.post(f'{JELLYFIN_SERVER_URL}/System/Configuration/encoding', json=configuration,  params={'api_key': JELLYFIN_API_KEY})
+    log.debug(f"Save configuration result status: {result.status_code}")
+    result.raise_for_status()
+
+def update_hardware_acceleration(hardware_acceleration_type):
+    log.debug(f"Changing hardware acceleration to {hardware_acceleration_type}")
+    try:
+
+        log.debug(f"Jellyfin server URL: {JELLYFIN_SERVER_URL}")
+        current_configuration = get_current_configuration()
+        if current_configuration['HardwareAccelerationType'] == hardware_acceleration_type:
+            log.debug(f"Hardware acceleration is already set to {hardware_acceleration_type}")
+            return
+        updated_configuration = current_configuration.copy()
+        updated_configuration['HardwareAccelerationType'] = hardware_acceleration_type
+        save_configuration(updated_configuration)
+    except Exception as e:
+        fail(f"Failed to update hardware acceleration: {e}")
+
+def transform_ffmpeg_filter_complex(filter_complex):
+    # Step 1: Split by semicolons to get each filter chain
+    filter_chains = filter_complex.split(';')
+    
+    transformed_chains = []
+    #'[0:3]scale=-1:240:fast_bilinear,scale,crop,pad=max(426\\,iw):max(240\\,ih):(ow-iw)/2:(oh-ih)/2:black@0,crop=426:240,format=yuva420p,hwupload=derive_device=cuda[sub];
+    # [0:0]setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_cuda=w=426:h=240:format=yuv420p[main];
+    # [main][sub]overlay_cuda=eof_action=pass:repeatlast=0'
+    for chain in filter_chains:
+        # Step 2: Split each chain by commas to get individual filters
+        filters = re.split(r'(?<!\\),', chain)
+        
+        transformed_filters = []
+        
+        for f in filters:
+            #exclusions
+            if f == 'hwmap=derive_device=qsv':
+                continue
+            if f == 'format=qsv[main]':
+                continue
+
+            # Step 3: Apply transformations
+            f = re.sub(r'format=bgra', 'format=yuva420p', f)
+            f = re.sub(r'scale_vaapi=format=nv12:extra_hw_frames=24', 'scale_cuda=format=yuv420p[main]', f)
+            f = re.sub(r'scale_vaapi=w=(\d+):h=(\d+):format=nv12:extra_hw_frames=24', r'scale_cuda=w=\1:h=\2:format=yuv420p[main]', f)
+           # f = re.sub(r'', 'scale_cuda=format=yuv420p[main]', f)
+            f = re.sub(r'format=qsv\[main\]', 'format=yuv420p[main]', f)
+            f = re.sub(r'overlay_qsv=eof_action=pass:repeatlast=0:w=\d+:h=\d+', 'overlay_cuda=eof_action=pass:repeatlast=0', f)
+            f = re.sub(r'hwupload=derive_device=qsv:extra_hw_frames=64\[sub\]', 'hwupload=derive_device=cuda[sub]', f)
+            
+
+            
+            transformed_filters.append(f)
+        
+        transformed_chains.append(','.join(transformed_filters))
+    # expected 
+    #[0:4]scale=-1:2160:fast_bilinear,scale,crop,pad=max(3840\,iw):max(2160\,ih):(ow-iw)/2:(oh-ih)/2:black@0,crop=3840:2160,format=yuva420p,hwupload=derive_device=cuda[sub];
+    #[0:0]setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_cuda=format=yuv420p[main];
+    # [main][sub]overlay_cuda=eof_action=pass:repeatlast=0 "
+    return ';'.join(transformed_chains)
+
+def transform_ffmpeg_vf(vf):
+    # Step 1: Split by semicolons to get each filter chain
+    filter_chains = vf.split(';')
+    
+    transformed_chains = []
+    
+    for chain in filter_chains:
+        # Step 2: Split each chain by commas to get individual filters
+        filters = re.split(r'(?<!\\),', chain)
+        
+        transformed_filters = []
+        #expected
+        #setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_cuda=format=yuv420p
+        for f in filters:
+            #exclusions
+            if f == 'hwmap=derive_device=qsv':
+                continue
+            if f == 'format=qsv':
+                continue
+
+            # Step 3: Apply transformations
+            f = re.sub(r'format=bgra', 'format=yuva420p', f)
+            f = re.sub(r'scale_vaapi=format=nv12:extra_hw_frames=24', 'scale_cuda=format=yuv420p', f)
+            f = re.sub(r'scale_vaapi=w=(\d+):h=(\d+):format=nv12:extra_hw_frames=24', r'scale_cuda=w=\1:h=\2:format=yuv420p', f)
+
+            f = re.sub(r'format=qsv\[main\]', 'format=yuv420p[main]', f)
+            f = re.sub(r'overlay_qsv=eof_action=pass:repeatlast=0:w=\d+:h=\d+', 'overlay_cuda=eof_action=pass:repeatlast=0', f)
+            f = re.sub(r'hwupload=derive_device=qsv:extra_hw_frames=64\[sub\]', 'hwupload=derive_device=cuda[sub]', f)
+            
+
+            
+            transformed_filters.append(f)
+        
+        transformed_chains.append(','.join(transformed_filters))
+    # expected 
+    #[0:4]scale=-1:2160:fast_bilinear,scale,crop,pad=max(3840\,iw):max(2160\,ih):(ow-iw)/2:(oh-ih)/2:black@0,crop=3840:2160,format=yuva420p,hwupload=derive_device=cuda[sub];
+    #[0:0]setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_cuda=format=yuv420p[main];
+    # [main][sub]overlay_cuda=eof_action=pass:repeatlast=0 "
+    return ';'.join(transformed_chains) 
+
+def translate_harware_acceleration_args(rffmpeg_command):
+    """
+    Translate hardware acceleration arguments to cude.
+    """
+    # # Check for hardware acceleration flags
+    # mappings = {
+    #     "-hwaccel": {"nvidia": "cuda", 
+    #                  "intel": "vaapi"},
+    #     "-hwaccel_device": {"nvidia": "cuda", 
+    #                         "intel": "qsv"},
+    #     "-init_hw_device": {"nvidia": "cuda=cu:0",
+    #                         "intel": ["vaapi=va:,kernel_driver=i915,driver=iHD", "qsv=qs@va"]},
+    #     "-filter_hw_device": {"nvidia": "cu",
+    #                           "intel": "qs"},
+    #     "-hwaccel_output_format": {"nvidia": "cuda",
+    #                                "intel": "vaapi"},
+    #     "-hwaccel_flags": {"nvidia": "+unsafe_output",
+    #                         "intel": None},
+    #     "-preset": {"nvidia": "p1",
+    #                "intel": "veryfast"},
+    #     "-level": {"nvidia": None,
+    #                "intel": "50"},
+    #     "-codec:v:0": {"nvidia": "hevc_nvenc",
+    #                  "intel": "hevc_qsv"},
+    #     "-vf": {"nvidia": "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_cuda=format=yuv420p",
+    #             "intel": "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=format=nv12:extra_hw_frames=24,hwmap=derive_device=qsv,format=qsv"},
+    #                         }
+    # print(f"rffmpeg_command: {rffmpeg_command}")
+
+    # new_args = []
+    # for arg in rffmpeg_command:
+    #     if arg in mappings:
+    #         if mappings[arg]['nvidia'] not in new_args:
+    #             new_args.append(arg)
+    #             new_args.append(mappings[arg]["nvidia"])
+           
+    #         #if the value is a list add multiple values
+    #     else:
+    #         new_args.append(arg)
+    # Replacement dictionary
+
+    #test1 = "[0:4]scale=-1:1080:fast_bilinear,scale,crop,pad=max(1920\\,iw):max(1080\\,ih):(ow-iw)/2:(oh-ih)/2:black@0,crop=1920:1080,format=bgra,hwupload=derive_device=qsv:extra_hw_frames=64[sub];[0:0]setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=format=nv12:extra_hw_frames=24,hwmap=derive_device=qsv,format=qsv[main];[main][sub]overlay_qsv=eof_action=pass:repeatlast=0:w=3840:h=2160"
+    #test2 = "[0:4]scale=-1:1080:fast_bilinear,scale,crop,pad=max(1920\,iw):max(1080\,ih):(ow-iw)/2:(oh-ih)/2:black@0,crop=1920:1080,format=bgra,hwupload=derive_device=qsv:extra_hw_frames=64[sub];[0:0]setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,scale_vaapi=format=nv12:extra_hw_frames=24,hwmap=derive_device=qsv,format=qsv[main];[main][sub]overlay_qsv=eof_action=pass:repeatlast=0:w=3840:h=2160"
+    #new_filtergraph = transform_ffmpeg_filter_complex(test2)
+
+    replacements = {
+        '-init_hw_device': {
+            'vaapi=va:,kernel_driver=i915,driver=iHD': 'cuda=cu:0',
+            'qsv=qs@va': ''
+        },
+        '-filter_hw_device': {
+            'qs': 'cu'
+        },
+        '-hwaccel': {
+            'vaapi': 'cuda'
+        },
+        '-hwaccel_output_format': {
+            'vaapi': 'cuda'
+        },
+        '-codec:v:0': {
+            'hevc_qsv': 'hevc_nvenc'
+        },
+        '-preset': {
+            'veryfast': 'p1'
+        }
+    }
+
+    remove_args = ['-init_hw_device', 'qsv=qs@va', '-level', '50']
+    add_args = ['-hwaccel_flags', '+unsafe_output', '-threads', "1"]
+
+    new_args = []
+    
+    i = 0
+    while i < len(rffmpeg_command):
+        arg = rffmpeg_command[i]
+        # Check if the current argument is in the replacements dictionary
+        if arg == "-filter_complex":
+            new_args.append(arg)
+            new_args.append(transform_ffmpeg_filter_complex(rffmpeg_command[i + 1]))
+            i += 1
+        elif arg == "-vf":
+            new_args.append(arg)
+            new_args.append(transform_ffmpeg_vf(rffmpeg_command[i + 1]))
+            i += 1
+        elif arg in replacements and i + 1 < len(rffmpeg_command) and rffmpeg_command[i + 1] in replacements[arg]:
+            replacement = replacements[arg][rffmpeg_command[i + 1]]
+            if replacement:  # If there's a replacement, use it
+                new_args.append(arg)
+                new_args.append(replacement)
+            # Skip the next argument since it has been replaced
+            i += 1
+        elif arg in remove_args:
+            # Skip this argument and possibly the next if it is part of a pair to remove
+            if i + 1 < len(rffmpeg_command) and rffmpeg_command[i + 1] in replacements.get(arg, {}):
+                i += 1
+        else:
+            new_args.append(arg)
+        i += 1
+    
+    # Insert additional arguments after -hwaccel_output_format
+    index = new_args.index('-hwaccel_output_format') + 2
+    for i, arg in enumerate(add_args):
+        new_args.insert(index + i, arg)
+
+    return new_args
+
 
 def run_local_command(config, command, command_args, stderr_as_stdout = False, mapped_cmd = None):
     """
@@ -422,9 +638,12 @@ def run_local_command(config, command, command_args, stderr_as_stdout = False, m
     for arg in command_args:
         rffmpeg_command.append(f"{arg}")
 
+    if len(rffmpeg_command) > 1 and rffmpeg_command[1] not in ['-version', '-hide_banner', '-encoders', '-filters', '-h', '-hwaccels']:
+        update_hardware_acceleration('qsv')
+
     log.info("Running command on host 'localhost'")
     log.debug(f"Local command: {' '.join(rffmpeg_command)}")
-
+    
     with dbconn(config) as cur:
         cur.execute(
             f"INSERT INTO processes (host_id, process_id, cmd) VALUES ({SQL_VAR_SIGN}, {SQL_VAR_SIGN}, {SQL_VAR_SIGN})",
@@ -477,6 +696,12 @@ def run_remote_command(
         stdout = sys.stdout
     
     rffmpeg_command.extend(map(shlex.quote, command_args))
+
+    #log.debug(f"Before translation: {rffmpeg_command}")
+    # translated_command = translate_harware_acceleration_args(rffmpeg_command)
+
+    if len(rffmpeg_command) > 1 and rffmpeg_command[1] not in ['-version', '-hide_banner', '-encoders', '-filters', '-h', '-hwaccels']:
+        update_hardware_acceleration('nvenc')
 
     log.info(f"Running command on host '{target_hostname}' ({target_servername})")
     log.debug(f"Remote command: {' '.join(rffmpeg_ssh_command + rffmpeg_command)}")
