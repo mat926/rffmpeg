@@ -697,7 +697,7 @@ def run_remote_command(
     
     rffmpeg_command.extend(map(shlex.quote, command_args))
 
-    # log.debug(f"Before translation: {rffmpeg_command}")
+    log.debug(f"Before translation: {rffmpeg_command}")
     # translated_command = translate_harware_acceleration_args(rffmpeg_command)
 
     if rffmpeg_command[1] not in ['-version', '-hide_banner', '-encoders', '-filters', '-h', '-hwaccels']:
