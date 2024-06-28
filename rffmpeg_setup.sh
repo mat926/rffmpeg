@@ -1,5 +1,7 @@
 #!/bin/sh
 
+#This script should be run in the docker container
+
 apt update 
 curl -L https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/bin/yq
 chmod +x /usr/bin/yq
