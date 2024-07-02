@@ -357,9 +357,9 @@ def get_target_host(config):
     for hid, host in host_mappings.items():
         log.debug(f"Trying host ID {hid} '{host['hostname']}'")
         # If it's marked as bad, continue
-        if host["current_state"] == "bad":
-            log.debug(f"Host previously marked bad by PID {host['marking_pid']}")
-            continue
+        # if host["current_state"] == "bad":
+        #     log.debug(f"Host previously marked bad by PID {host['marking_pid']}")
+        #     continue
 
         # Try to connect to the host and run a very quick command to determine if it is workable
         if host["hostname"] not in ["localhost", "127.0.0.1"]:
