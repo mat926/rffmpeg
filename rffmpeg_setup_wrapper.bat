@@ -16,5 +16,7 @@ ssh -t -i %USERPROFILE%\.ssh\id_rsa -p 24 %user% "echo %password% | sudo -S /usr
 
 docker restart rffmpeg-server || exit /b 1
 
+echo rffmpeg setup complete
+
 
 
