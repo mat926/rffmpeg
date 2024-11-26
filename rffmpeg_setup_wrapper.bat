@@ -9,7 +9,7 @@ echo Logging into Synology
 
 ssh -t -i %USERPROFILE%\.ssh\id_rsa -p 24 %user% "echo %password% | sudo -S /usr/local/bin/docker exec jellyfin bash -c 'curl https://raw.githubusercontent.com/mat926/rffmpeg/master/rffmpeg_setup.sh -o /config/rffmpeg_setup.sh && chmod +x /config/rffmpeg_setup.sh && /config/rffmpeg_setup.sh' ; sudo -S /usr/local/bin/docker cp jellyfin:/config/.ssh/id_rsa.pub /volume1/docker/jellyfin/id_rsa.pub" || exit /b 1
 
-scp -i %USERPROFILE%\.ssh\id_rsa -P 24 %user%:/volume1/docker/jellyfin/id_rsa.pub %USERPROFILE%\.ssh\rffmpeg\id_rsa.pub || exit /b 1
+scp -i %USERPROFILE%\.ssh\id_rsa -O -P 24 %user%:/volume1/docker/jellyfin/id_rsa.pub %USERPROFILE%\.ssh\rffmpeg\id_rsa.pub || exit /b 1
 
 @REM CLEANUP
 ssh -t -i %USERPROFILE%\.ssh\id_rsa -p 24 %user% "echo %password% | sudo -S /usr/local/bin/docker exec jellyfin rm /config/rffmpeg_setup.sh; sudo -S rm -f /volume1/docker/jellyfin/id_rsa.pub ; sudo -S /usr/local/bin/docker restart jellyfin" || exit /b 1
