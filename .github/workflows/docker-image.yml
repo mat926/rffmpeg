@@ -1,0 +1,70 @@
+name: Build and Push Docker Image
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # Runs daily at midnight
+  push:
+    branches:
+      - main
+
+jobs:
+  check-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get latest Jellyfin release
+        id: get-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LATEST_RELEASE=$(curl -s https://api.github.com/repos/jellyfin/jellyfin/releases/latest | jq -r .tag_name)
+          echo "latest_release=$LATEST_RELEASE" >> $GITHUB_OUTPUT
+          echo "Latest release: $LATEST_RELEASE"
+
+      - name: Read previous release
+        id: read-previous
+        run: |
+          if [ -f .last_release ]; then
+            PREVIOUS_RELEASE=$(cat .last_release)
+            echo "previous_release=$PREVIOUS_RELEASE" >> $GITHUB_OUTPUT
+          else
+            echo "previous_release=" >> $GITHUB_OUTPUT
+          fi
+          echo "Previous release: $PREVIOUS_RELEASE"
+
+      - name: Compare releases
+        id: compare-releases
+        run: |
+          if [ "${{ steps.get-release.outputs.latest_release }}" != "${{ steps.read-previous.outputs.previous_release }}" ]; then
+            echo "new_release=true" >> $GITHUB_ENV
+            echo "New release detected!"
+          else
+            echo "new_release=false" >> $GITHUB_ENV
+            echo "No new release"
+          fi
+
+      - name: Update release tracker
+        if: env.new_release == 'true'
+        run: |
+          echo "${{ steps.get-release.outputs.latest_release }}" > .last_release
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add .last_release
+          git commit -m "Update tracked Jellyfin release to ${{ steps.get-release.outputs.latest_release }}"
+          git push
+
+  handle-new-release:
+    needs: check-release
+    if: needs.check-release.outputs.new_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify or perform action
+        run: |
+          echo "New Jellyfin release detected: ${{ needs.check-release.outputs.latest_release }}"
+          # Add your custom actions here, such as:
+          # - Sending a notification
+          # - Triggering a build
+          # - Running tests
+          # - Updating dependencies

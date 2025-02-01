@@ -411,6 +411,8 @@ def get_target_host(config):
 def get_current_configuration():
     result = requests.get(f'{JELLYFIN_SERVER_URL}/System/Configuration/encoding', params={'api_key': JELLYFIN_API_KEY})
     log.debug(f"Current configuration: {result.text}")
+    if result.status_code == 401:
+        log.error("Invalid API key of JELLYFIN_API_KEY")
     return result.json()
 
 def save_configuration(configuration):
@@ -429,6 +431,11 @@ def update_hardware_acceleration(hardware_acceleration_type):
         updated_configuration = current_configuration.copy()
         updated_configuration['HardwareAccelerationType'] = hardware_acceleration_type
         save_configuration(updated_configuration)
+    except requests.JSONDecodeError as e:
+        if e.response is not None:
+            log.warning(f"Failed to update JSON hardware acceleration: {e.response.status_code} {e.response.text}")
+        else:
+            log.warning(f"Failed to update JSON hardware acceleration: {e}")
     except Exception as e:
         fail(f"Failed to update hardware acceleration: {e}")
 
