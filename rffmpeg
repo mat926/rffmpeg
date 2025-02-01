@@ -410,7 +410,7 @@ def get_target_host(config):
 
 def get_current_configuration():
     result = requests.get(f'{JELLYFIN_SERVER_URL}/System/Configuration/encoding', params={'api_key': JELLYFIN_API_KEY})
-    log.debug(f"Current configuration: {result.json()}")
+    log.debug(f"Current configuration: {result.text}")
     return result.json()
 
 def save_configuration(configuration):
