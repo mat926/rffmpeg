@@ -1,78 +1,47 @@
-name: Build and Push Docker Image
+name: Check Jellyfin Release and Push to Docker
 
 on:
   schedule:
-    - cron: '0 0 * * *' # Runs daily at midnight
-  push:
-    branches:
-      - master
+    - cron: '0 0 * * *'  # Runs daily at midnight UTC
+  workflow_dispatch:     # Allows manual triggering
 
 jobs:
-  check-release:
+  check-and-push:
     runs-on: ubuntu-latest
-    outputs:
-      new_release: ${{ steps.compare-releases.outputs.new_release }}
-      latest_release: ${{ steps.compare-releases.outputs.latest_release }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get latest Jellyfin release
-        id: get-release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Get latest Jellyfin version
+        id: version_check
         run: |
-          LATEST_RELEASE=$(curl -s https://api.github.com/repos/jellyfin/jellyfin/releases/latest | jq -r .tag_name)
-          echo "LATEST_RELEASE=$LATEST_RELEASE" >> $GITHUB_ENV
-          echo "Latest release: $LATEST_RELEASE"
-
-      - name: Read previous release
-        id: read-previous
-        run: |
-          if [ -f .last_release ]; then
-            PREVIOUS_RELEASE=$(cat .last_release)
-            echo "PREVIOUS_RELEASE=$PREVIOUS_RELEASE" >> $GITHUB_ENV
+          LATEST_TAG=$(curl -s https://api.github.com/repos/jellyfin/jellyfin/releases/latest | jq -r '.tag_name')
+          if [ -f last_jellyfin_version.txt ]; then
+            CURRENT_TAG=$(cat last_jellyfin_version.txt)
           else
-            echo "PREVIOUS_RELEASE=" >> $GITHUB_ENV
+            CURRENT_TAG=""
           fi
-          echo "Previous release: $PREVIOUS_RELEASE"
-
-      - name: Compare releases
-        id: compare-releases
-        run: |
-          if [ "$LATEST_RELEASE" != "$PREVIOUS_RELEASE" ]; then
-            echo "new_release=true" >> $GITHUB_ENV
-            echo "latest_release=$LATEST_RELEASE" >> $GITHUB_ENV
-            echo "New release detected!"
+          echo "Latest tag: $LATEST_TAG"
+          echo "Current tag: $CURRENT_TAG"
+          if [ "$LATEST_TAG" != "$CURRENT_TAG" ]; then
+            echo "new_version=true" >> $GITHUB_OUTPUT
+            echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
           else
-            echo "new_release=false" >> $GITHUB_ENV
-            echo "No new release"
-          fi     
+            echo "new_version=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and push Docker image
+        if: steps.version_check.outputs.new_version == 'true'
         env:
-            LATEST_RELEASE: ${{ steps.get-release.outputs.LATEST_RELEASE }}
-            PREVIOUS_RELEASE: ${{ steps.read-previous.outputs.PREVIOUS_RELEASE }}
-
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+            echo "Building and pushing Docker image"
+         # docker login -u $DOCKERHUB_USERNAME -p $DOCKERHUB_TOKEN
+         # docker build -t $DOCKERHUB_USERNAME/jellyfin:${{ steps.version_check.outputs.latest_tag }} .
+         # docker push $DOCKERHUB_USERNAME/jellyfin:${{ steps.version_check.outputs.latest_tag }}
           
-      - name: Update release tracker
-        if: env.new_release == 'true'
-        run: |
-          echo "${{ env.latest_release }}" > .last_release
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          git add .last_release
-          git commit -m "Update tracked Jellyfin release to ${{ env.latest_release }}"
-          git push
-
-  handle-new-release:
-    needs: check-release
-    if: needs.check-release.outputs.new_release == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Notify or perform action
-        run: |
-          echo "New Jellyfin release detected: ${{ needs.check-release.outputs.latest_release }}"
-          # Add your custom actions here, such as:
-          # - Sending a notification
-          # - Triggering a build
-          # - Running tests
-          # - Updating dependencies
+          # Optionally push as 'latest'
