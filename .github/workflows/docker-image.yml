@@ -70,4 +70,6 @@ jobs:
             with:
                 context: .
                 push: true
+                build-args: |
+                    RFFMPEG_TARGET_IP=${{ vars.RFFMPEG_TARGET_IP }}
                 tags: mat926/jellyfin-rffmpeg:latest

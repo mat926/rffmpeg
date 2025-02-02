@@ -8,8 +8,6 @@
 #yq -i '.EncodingOptions.EncoderAppPathDisplay = "/usr/local/bin/ffmpeg"' /config/config/encoding.xml
 
 
-rffmpeg add 192.168.0.118
-
 mkdir -p /config/.ssh/
 mkdir -p /root/.ssh/
 rm -rf /config/.ssh/*

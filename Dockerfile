@@ -1,6 +1,8 @@
 # Use the official Jellyfin image as the base image
 FROM jellyfin/jellyfin:latest
 
+ARG RFFMPEG_TARGET_IP
+
 #Make sure line endings are LF
 COPY  /rffmpeg /usr/local/bin/rffmpeg
 COPY  /rffmpeg.yml.sample /etc/rffmpeg/rffmpeg.yml
@@ -23,6 +25,8 @@ RUN apt update && \
     yq -i 'with(.rffmpeg.logging.logfile ; . = "/config/log/rffmpeg.log" | . style="double")' /etc/rffmpeg/rffmpeg.yml && \
     yq -i 'with(.rffmpeg.remote.args[0] ; . = "-i" | . style="double")' /etc/rffmpeg/rffmpeg.yml && \
     yq -i 'with(.rffmpeg.remote.args[1] ; . = "/config/.ssh/id_rsa" | . style="double")' /etc/rffmpeg/rffmpeg.yml && \
-    rffmpeg init -y
+    rffmpeg init -y && \
+    rffmpeg add ${RFFMPEG_TARGET_IP}
+
 
 CMD [ "--ffmpeg", "/usr/local/bin/ffmpeg" ]
