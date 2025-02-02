@@ -39,9 +39,6 @@ jobs:
 
       - name: Compare releases
         id: compare-releases
-        env:
-            LATEST_RELEASE: ${{ steps.get-release.outputs.LATEST_RELEASE }}
-            PREVIOUS_RELEASE: ${{ steps.read-previous.outputs.PREVIOUS_RELEASE }}
         run: |
           if [ "$LATEST_RELEASE" != "$PREVIOUS_RELEASE" ]; then
             echo "new_release=true" >> $GITHUB_ENV
@@ -50,7 +47,10 @@ jobs:
           else
             echo "new_release=false" >> $GITHUB_ENV
             echo "No new release"
-          fi
+          fi     
+        env:
+            LATEST_RELEASE: ${{ steps.get-release.outputs.LATEST_RELEASE }}
+            PREVIOUS_RELEASE: ${{ steps.read-previous.outputs.PREVIOUS_RELEASE }}
 
           
       - name: Update release tracker
