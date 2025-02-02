@@ -10,6 +10,9 @@ on:
 jobs:
   check-release:
     runs-on: ubuntu-latest
+    outputs:
+      new_release: ${{ steps.compare-releases.outputs.new_release }}
+      latest_release: ${{ steps.compare-releases.outputs.latest_release }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -37,17 +40,20 @@ jobs:
       - name: Compare releases
         id: compare-releases
         run: |
-          if [ "${{ steps.get-release.outputs.latest_release }}" != "${{ steps.read-previous.outputs.previous_release }}" ]; then
+          if [ "$LATEST_RELEASE" != "$PREVIOUS_RELEASE" ]; then
             echo "new_release=true" >> $GITHUB_ENV
+            echo "::set-output name=new_release::true"
+            echo "::set-output name=latest_release::$LATEST_RELEASE"
             echo "New release detected!"
           else
             echo "new_release=false" >> $GITHUB_ENV
+            echo "::set-output name=new_release::false"
             echo "No new release"
           fi
 
           
       - name: Update release tracker
-        if: env.new_release == 'true'
+        if: ${{ steps.compare-releases.outputs.new_release }} == 'true'
         run: |
           echo "${{ steps.get-release.outputs.latest_release }}" > .last_release
           git config --global user.name "GitHub Actions"
