@@ -23,7 +23,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           LATEST_RELEASE=$(curl -s https://api.github.com/repos/jellyfin/jellyfin/releases/latest | jq -r .tag_name)
-          echo "latest_release=$LATEST_RELEASE" >> $GITHUB_OUTPUT
+          echo "LATEST_RELEASE=$LATEST_RELEASE" >> $GITHUB_ENV
           echo "Latest release: $LATEST_RELEASE"
 
       - name: Read previous release
@@ -31,23 +31,24 @@ jobs:
         run: |
           if [ -f .last_release ]; then
             PREVIOUS_RELEASE=$(cat .last_release)
-            echo "previous_release=$PREVIOUS_RELEASE" >> $GITHUB_OUTPUT
+            echo "PREVIOUS_RELEASE=$PREVIOUS_RELEASE" >> $GITHUB_ENV
           else
-            echo "previous_release=" >> $GITHUB_OUTPUT
+            echo "PREVIOUS_RELEASE=" >> $GITHUB_ENV
           fi
           echo "Previous release: $PREVIOUS_RELEASE"
 
       - name: Compare releases
         id: compare-releases
+        env:
+            LATEST_RELEASE: ${{ steps.get-release.outputs.LATEST_RELEASE }}
+            PREVIOUS_RELEASE: ${{ steps.read-previous.outputs.PREVIOUS_RELEASE }}
         run: |
           if [ "$LATEST_RELEASE" != "$PREVIOUS_RELEASE" ]; then
             echo "new_release=true" >> $GITHUB_ENV
-            echo "::set-output name=new_release::true"
-            echo "::set-output name=latest_release::$LATEST_RELEASE"
+            echo "latest_release=$LATEST_RELEASE" >> $GITHUB_ENV
             echo "New release detected!"
           else
             echo "new_release=false" >> $GITHUB_ENV
-            echo "::set-output name=new_release::false"
             echo "No new release"
           fi
 
@@ -55,11 +56,11 @@ jobs:
       - name: Update release tracker
         if: env.new_release == 'true'
         run: |
-          echo "${{ steps.get-release.outputs.latest_release }}" > .last_release
+          echo "${{ env.latest_release }}" > .last_release
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           git add .last_release
-          git commit -m "Update tracked Jellyfin release to ${{ steps.get-release.outputs.latest_release }}"
+          git commit -m "Update tracked Jellyfin release to ${{ env.latest_release }}"
           git push
 
   handle-new-release:
