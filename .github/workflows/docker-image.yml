@@ -45,6 +45,7 @@ jobs:
             echo "No new release"
           fi
 
+          
       - name: Update release tracker
         if: env.new_release == 'true'
         run: |
