@@ -53,7 +53,7 @@ jobs:
 
           
       - name: Update release tracker
-        if: ${{ steps.compare-releases.outputs.new_release }} == 'true'
+        if: env.new_release == 'true'
         run: |
           echo "${{ steps.get-release.outputs.latest_release }}" > .last_release
           git config --global user.name "GitHub Actions"
