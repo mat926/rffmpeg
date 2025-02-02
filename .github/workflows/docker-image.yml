@@ -30,9 +30,11 @@ jobs:
           echo "Latest tag: $LATEST_TAG"
           echo "Current tag: $CURRENT_TAG"
           if [ "$LATEST_TAG" != "$CURRENT_TAG" ]; then
+            echo "New version available"
             echo "new_version=true" >> $GITHUB_OUTPUT
             echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
           else
+            echo "No new version available"
             echo "new_version=false" >> $GITHUB_OUTPUT
           fi
 
