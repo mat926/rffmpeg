@@ -36,6 +36,16 @@ jobs:
             echo "new_version=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Update version file
+        if: steps.version_check.outputs.new_version == 'true'
+        run: |
+            echo "${{ steps.version_check.outputs.latest_tag }}" > last_jellyfin_version.txt
+            git config --global user.name "GitHub Actions"
+            git config --global user.email "actions@github.com"
+            git add last_jellyfin_version.txt
+            git commit -m "Update Jellyfin version to ${{ steps.version_check.outputs.latest_tag }}"
+            git push
+
       - name: Build and push Docker image
         if: steps.version_check.outputs.new_version == 'true'
         env:
@@ -51,12 +61,3 @@ jobs:
             # docker tag $DOCKERHUB_USERNAME/jellyfin:${{ steps.version_check.outputs.latest_tag }} $DOCKERHUB_USERNAME/jellyfin:latest
             # docker push $DOCKERHUB_USERNAME/jellyfin:latest
 
-      - name: Update version file
-        if: steps.version_check.outputs.new_version == 'true'
-        run: |
-            echo "${{ steps.version_check.outputs.latest_tag }}" > last_jellyfin_version.txt
-            git config --global user.name "GitHub Actions"
-            git config --global user.email "actions@github.com"
-            git add last_jellyfin_version.txt
-            git commit -m "Update Jellyfin version to ${{ steps.version_check.outputs.latest_tag }}"
-            git push
