@@ -11,12 +11,15 @@ on:
 jobs:
   check-version:
     runs-on: ubuntu-latest
+    outputs:
+        new_version: ${{ steps.version_check.outputs.new_version }}
+        latest_tag: ${{ steps.version_check.outputs.latest_tag }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+        # with:
+        #   fetch-depth: 0
+        #   token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Get latest Jellyfin version
         id: version_check
@@ -50,7 +53,7 @@ jobs:
 
   build-and-push:
         needs: check-version
-        if: needs.check-version.outputs.new_version == 'true'
+        if:  ${{ needs.check-version.outputs.new_version == 'true' }}
         runs-on: ubuntu-latest
         steps:
           - name: Checkout repository
