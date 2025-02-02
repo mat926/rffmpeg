@@ -48,9 +48,9 @@ jobs:
             git commit -m "Update Jellyfin version to ${{ steps.version_check.outputs.latest_tag }}"
             git push
 
-  build_and_push:
+  build-and-push:
         needs: check-version
-        if: needs.version_check.outputs.new_version == 'true'
+        if: needs.check-version.outputs.new_version == 'true'
         runs-on: ubuntu-latest
         steps:
           - name: Checkout repository
