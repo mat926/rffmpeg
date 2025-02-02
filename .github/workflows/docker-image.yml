@@ -3,6 +3,9 @@ name: Check Jellyfin Release and Push to Docker
 on:
   schedule:
     - cron: '0 0 * * *'  # Runs daily at midnight UTC
+  push:
+    branches:
+      - master
   workflow_dispatch:     # Allows manual triggering
 
 jobs:
